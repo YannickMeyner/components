@@ -25,6 +25,7 @@ build_image:
   variables:
     DOCKER_DRIVER: overlay2
     IMAGE_NAME: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:$[[ inputs.image_tag ]]"
+    IMAGE_TAR: "$[[ inputs.project_name ]]-$[[ inputs.image_tag ]].tar"   # <-- Same tar name
   before_script:
     - echo "$[[ inputs.acr_password ]]" | docker login "$[[ inputs.acr_login_server ]]" -u "$[[ inputs.acr_username ]]" --password-stdin
   script:
@@ -32,3 +33,9 @@ build_image:
     - docker build -t $IMAGE_NAME .
     - docker tag $IMAGE_NAME $[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:latest
     - docker images
+    - echo "Saving Image"
+    - docker save -o "$CI_PROJECT_DIR/$IMAGE_TAR" "$IMAGE_NAME"    # <-- Save with dynamic name
+  artifacts:
+    paths:
+      - "$[[ inputs.project_name ]]-$[[ inputs.image_tag ]].tar"  # <-- Upload correct tar
+    expire_in: 1 hour

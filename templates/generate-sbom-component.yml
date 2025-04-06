@@ -1,33 +1,50 @@
 spec:
   inputs:
+    acr_login_server:
+      description: 'Azure Container Registry Login Server URL'
     project_name:
       description: 'Project name used for image naming'
     image_tag:
       description: 'Image tag for the image to scan'
+    directory:
+      default: '.'
+      description: 'Directory containing Project'
     sbom_stage:
       default: 'test'
       description: 'Stage for the SBOM generation job'
 ---
 generate_sbom:
   stage: $[[ inputs.sbom_stage ]]
-  image: docker:28.0.4
+  image: docker:latest
   services:
     - docker:dind
   variables:
     DOCKER_DRIVER: overlay2
-    LOCAL_IMAGE_NAME: "$[[ inputs.project_name ]]:$[[ inputs.image_tag ]]"
-    DOCKER_HOST: tcp://docker:2375/  # Very important! Talk to DinD
-    DOCKER_TLS_CERTDIR: ""           # Disable TLS for DinD (default GitLab behavior)
+    LOCAL_IMAGE_NAME: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:$[[ inputs.image_tag ]]"   # <-- Full image name
+    PROJECT_DIR: "$[[ inputs.directory ]]"
+    # DOCKER_HOST: tcp://docker:2375/  # Very important! Talk to DinD
+    # DOCKER_TLS_CERTDIR: ""           # Disable TLS for DinD (default GitLab behavior)
+    IMAGE_TAR: "$[[ inputs.project_name ]]-$[[ inputs.image_tag ]].tar"   # <-- Same tar name
+  dependencies:
+    - build_image
   before_script:
     - apk add --no-cache curl
+    - apk add --no-cache jq
     - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+    - docker load < "$IMAGE_TAR"    # <-- Load the right tar file
   script:
     - echo "Generating SBOM for image $LOCAL_IMAGE_NAME"
-    - syft "docker:$LOCAL_IMAGE_NAME" -o spdx-json > sbom.json
-    - echo "SBOM summary:"
-    - cat sbom.json
+    - syft "$LOCAL_IMAGE_NAME" -o spdx-json > sbom-image.json
+    - echo "Generating SBOM for Project directory $PROJECT_DIR"
+    - syft "dir:$PROJECT_DIR" -o spdx-json > sbom-project.json
+    - echo "Summary of Project Directory SBOM:"
+    - jq -r '.packages[] | "\(.name) \(.versionInfo)"' sbom-project.json | head -n 30  || true
+    - echo "Summary of Docker Image SBOM:"
+    - jq -r '.packages[] | "\(.name) \(.versionInfo) [\(.description)]"' sbom-image.json | head -n 30  || true
   needs:
     - build_image
   artifacts:
     paths:
-      - sbom.json
+      - sbom-project.json
+      - sbom-image.json
+    expire_in: 30 days
