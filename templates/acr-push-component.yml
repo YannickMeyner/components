@@ -1,0 +1,36 @@
+spec:
+  inputs:
+    acr_login_server:
+      description: 'Azure Container Registry Login Server URL'
+    acr_username:
+      description: 'ACR Username for Docker login'
+    acr_password:
+      description: 'ACR Password for Docker login'
+    project_name:
+      description: 'Project name used for image naming'
+    image_tag:
+      description: 'Image tag'
+    push_stage:
+      default: 'deploy'
+      description: 'Stage for push to ACR job'
+---
+push_image:
+  stage: $[[ inputs.push_stage ]]
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    IMAGE_NAME: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:$[[ inputs.image_tag ]]"
+  before_script:
+    - echo "$[[ inputs.acr_password ]]" | docker login "$[[ inputs.acr_login_server ]]" -u "$[[ inputs.acr_username ]]" --password-stdin
+  script:
+    - docker push $IMAGE_NAME
+    - docker push $[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:latest
+  needs:
+    - build_image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+    - if: $CI_COMMIT_TAG
+      when: on_success

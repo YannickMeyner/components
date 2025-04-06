@@ -1,0 +1,34 @@
+spec:
+  inputs:
+    acr_login_server:
+      description: 'Azure Container Registry Login Server URL'
+    acr_username:
+      description: 'ACR Username for Docker login'
+    acr_password:
+      description: 'ACR Password for Docker login'
+    project_name:
+      description: 'Project name used for image naming'
+    image_tag:
+      description: 'Image tag'
+    directory:
+      default: '.'
+      description: 'Directory containing Dockerfile'
+    build_stage:
+      default: 'build'
+      description: 'Stage for build job'
+---
+build_image:
+  stage: $[[ inputs.build_stage ]]
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    IMAGE_NAME: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:$[[ inputs.image_tag ]]"
+  before_script:
+    - echo "$[[ inputs.acr_password ]]" | docker login "$[[ inputs.acr_login_server ]]" -u "$[[ inputs.acr_username ]]" --password-stdin
+  script:
+    - cd $[[ inputs.directory ]]
+    - docker build -t $IMAGE_NAME .
+    - docker tag $IMAGE_NAME $[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:latest
+    - docker images
