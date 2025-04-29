@@ -22,13 +22,28 @@ push_image:
   variables:
     DOCKER_DRIVER: overlay2
     IMAGE_NAME: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:$[[ inputs.image_tag ]]"
+    LATEST_IMAGE: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:latest"
+    STABLE_IMAGE: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:stable"
+    VERSION_IMAGE: "$[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:$CI_COMMIT_TAG"
+    IMAGE_TAR: "$[[ inputs.project_name ]]-$[[ inputs.image_tag ]].tar" 
   before_script:
     - echo "$[[ inputs.acr_password ]]" | docker login "$[[ inputs.acr_login_server ]]" -u "$[[ inputs.acr_username ]]" --password-stdin
+    - echo "Loading Image"
+    - docker load -i "$IMAGE_TAR"   
   script:
     - docker push $IMAGE_NAME
-    - docker push $[[ inputs.acr_login_server ]]/$[[ inputs.project_name ]]:latest
+    - docker tag $IMAGE_NAME $LATEST_IMAGE
+    - docker push $LATEST_IMAGE
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        docker tag $IMAGE_NAME $STABLE_IMAGE
+        docker push $STABLE_IMAGE
+        docker tag $IMAGE_NAME $VERSION_IMAGE
+        docker push $VERSION_IMAGE
+      fi
   needs:
-    - build_image
+    - job: build_image
+      artifacts: true
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       when: on_success
